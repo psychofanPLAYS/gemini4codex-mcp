@@ -18,7 +18,7 @@ Unlike other bridges, this delegator treats Gemini workers as resilient backgrou
 - Python 3.9+
 - Codex CLI (`codex`)
 
-## Installation
+## Installation & Bootstrapping
 
 1. **Clone the repository:**
    ```bash
@@ -26,24 +26,26 @@ Unlike other bridges, this delegator treats Gemini workers as resilient backgrou
    cd gemini4codex
    ```
 
-2. **Run the Installer script:**
-   ```bash
-   ./scripts/install.sh
-   ```
-   This will install the Python dependencies and copy the security hooks to your `~/.gemini/config/plugins/codex-supervised-worker` directory.
-
-3. **Register the MCP Server in Codex:**
-   Add the following to your `~/.codex/config.toml`:
+2. **Register the MCP Server in Codex using `uv`:**
+   Add the following to your `~/.codex/config.toml` (or equivalent Codex MCP configuration).
+   We highly recommend using `uv` to automatically manage the environment and dependencies:
    ```toml
    [mcp.servers.gemini-delegator]
-   command = "python3"
-   args = ["/path/to/gemini4codex/server/gemini_delegator.py"]
+   command = "uv"
+   args = [
+       "--directory", 
+       "/ABSOLUTE/PATH/TO/gemini4codex", 
+       "run", 
+       "server/gemini_delegator.py"
+   ]
    ```
 
-4. **Verify Installation:**
-   ```bash
-   ./scripts/doctor.sh
-   ```
+3. **Provide Codex with the Bootstrapping Instructions:**
+   Once connected, you **must** instruct Codex to read the `BOOTSTRAP.md` file located in this repository. 
+   This file provides Codex with the explicit instructions on how to structure the Multi-Agent Hierarchy and how to leverage `gemini-3.1-pro` and `gemini-3.6-flash` as subordinate agents.
+   
+   *Example Prompt for Codex:*
+   > "I have just connected the gemini-delegator MCP server. Please read the `BOOTSTRAP.md` file in the gemini4codex repository and apply the agent synergy patterns to your global memory."
 
 ## How It Works
 
@@ -68,18 +70,11 @@ When Codex is connected to the MCP server, it gains access to the following tool
 7. **Codex** calls `apply_agent_run("db-refactor")`.
 8. **Delegator Server** squash merges the changes cleanly into the main branch.
 
-## Uninstallation
-
-To remove the security plugins and SQLite ledger:
-```bash
-./scripts/uninstall.sh
-```
-
 ## Security
 
 This plugin aggressively restricts the Gemini subordinate worker:
-- **Write Jailing**: If a worker is delegated to `./src/frontend`, any attempt to `write_to_file` in `./src/backend` is instantly rejected.
-- **Git Sandboxing**: Workers are forbidden from running structural git commands (`git commit`, `git push`, `git merge`).
+- **Write Jailing**: If a worker is delegated to `./src/frontend`, any attempt to `write_to_file` in `./src/backend` or outside the workspace is instantly rejected by dynamically injected SDK hooks.
+- **Git Sandboxing**: Workers are forbidden from running structural git commands (`git commit`, `git push`, `git merge`) or destructive operations (`rm -rf`).
 - **Profile Segregation**: You can delegate a `scout` or `reviewer` profile, which disables all write tools completely.
 
 ## Architecture Map
@@ -88,24 +83,16 @@ The project is structured into three main layers:
 
 ```
 gemini4codex/
-├── server/
-│   ├── gemini_delegator.py  # The FastMCP Server exposing endpoints to Codex
-│   ├── supervisor.py        # Async execution engine; parses stream-json & detects loops
-│   ├── worktree.py          # Git worktree isolation and squash-merge orchestrator
-│   └── ledger.py            # SQLite WAL state manager for robust persistence
-├── plugin/
-│   └── skills/
-│       └── delegate-to-gemini/
-│           └── SKILL.md     # Codex-side documentation on how to use these MCP tools
-├── antigravity-plugin/
-│   └── hooks/
-│       └── enforce_boundaries.py  # Security hook injected into the worker to prevent sandbox escapes
-└── scripts/
-    ├── install.sh           # Local setup and plugin deployment
-    ├── uninstall.sh         # Cleanup script
-    └── doctor.sh            # Health check utility
+├── pyproject.toml           # Python packaging and dependency config
+├── BOOTSTRAP.md             # Essential instructions for Codex on how to use these agents
+└── server/
+    ├── gemini_delegator.py  # The FastMCP Server exposing endpoints to Codex
+    ├── supervisor.py        # Async execution engine; parses stream-json & detects loops
+    ├── worktree.py          # Git worktree isolation and squash-merge orchestrator
+    ├── security.py          # Dynamic SDK hooks to jail the worker
+    └── ledger.py            # SQLite WAL state manager for robust persistence
 ```
 
 - **Layer 1: The Codex Interface** (`gemini_delegator.py`) handles all incoming MCP requests.
-- **Layer 2: The Orchestrator** (`worktree.py` & `supervisor.py`) spins up the isolated environment and runs the process asynchronously.
-- **Layer 3: The Jailed Subordinate** (`enforce_boundaries.py`) runs in a restricted context where it cannot harm the host system or primary branch.
+- **Layer 2: The Orchestrator** (`worktree.py` & `supervisor.py`) spins up the isolated environment and runs the process asynchronously via the Antigravity SDK.
+- **Layer 3: The Jailed Subordinate** (`security.py`) restricts the worker's context natively so it cannot harm the host system or primary branch.
