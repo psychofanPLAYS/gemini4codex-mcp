@@ -31,31 +31,31 @@ class LedgerDB:
             conn.close()
 
     def _init_db(self):
-        try:
-            with self._transaction() as conn:
-                conn.executescript("""
-                    CREATE TABLE IF NOT EXISTS workers (
-                        worker_id TEXT PRIMARY KEY,
-                        conversation_id TEXT,
-                        profile TEXT,
-                        workspace TEXT,
-                        model TEXT,
-                        effort TEXT,
-                        created_at TIMESTAMP,
-                        last_seen_at TIMESTAMP,
-                        state TEXT,
-                        task_summary TEXT,
-                        last_run_id TEXT,
-                        worktree_uuid TEXT,
-                        original_workspace TEXT
-                    );
-                    
-                    -- Attempt to add columns if upgrading an older DB (ignore errors if they already exist)
-                    ALTER TABLE workers ADD COLUMN worktree_uuid TEXT;
-                    ALTER TABLE workers ADD COLUMN original_workspace TEXT;
-                """)
-        except sqlite3.OperationalError:
-            pass # Columns already exist
+        with self._transaction() as conn:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS workers (
+                    worker_id TEXT PRIMARY KEY,
+                    conversation_id TEXT,
+                    profile TEXT,
+                    workspace TEXT,
+                    model TEXT,
+                    effort TEXT,
+                    created_at TIMESTAMP,
+                    last_seen_at TIMESTAMP,
+                    state TEXT,
+                    task_summary TEXT,
+                    last_run_id TEXT,
+                    worktree_uuid TEXT,
+                    original_workspace TEXT
+                );
+            """)
+            
+            cur = conn.execute("PRAGMA table_info(workers)")
+            columns = [row['name'] for row in cur.fetchall()]
+            if 'worktree_uuid' not in columns:
+                conn.execute("ALTER TABLE workers ADD COLUMN worktree_uuid TEXT")
+            if 'original_workspace' not in columns:
+                conn.execute("ALTER TABLE workers ADD COLUMN original_workspace TEXT")
 
         with self._transaction() as conn:
             conn.executescript("""
@@ -147,14 +147,16 @@ class LedgerDB:
             return [dict(row) for row in cur.fetchall()]
 
     def reconcile_stale_runs(self):
-        """Find runs marked as RUNNING from previous crashes and mark them FAILED."""
+        """Find runs and workers marked as RUNNING from previous crashes and mark them FAILED."""
         with self._transaction() as conn:
             now = datetime.utcnow().isoformat()
             
             # Find all running runs
             cur = conn.execute("SELECT run_id, worker_id FROM runs WHERE status = 'RUNNING'")
             runs = cur.fetchall()
-            
             for row in runs:
                 conn.execute("UPDATE runs SET status = 'FAILED', error = 'Process terminated unexpectedly', end_time = ? WHERE run_id = ?", (now, row['run_id']))
                 conn.execute("UPDATE workers SET state = 'FAILED', last_seen_at = ? WHERE worker_id = ?", (now, row['worker_id']))
+                
+            # Fail any orphaned workers that are stuck
+            conn.execute("UPDATE workers SET state = 'FAILED', last_seen_at = ? WHERE state IN ('RUNNING', 'INITIALIZING')", (now,))

@@ -11,9 +11,7 @@ class WorktreeManager:
 
     @staticmethod
     def _get_env(repo_path: str):
-        env = os.environ.copy()
-        env["HOME"] = repo_path
-        return env
+        return os.environ.copy()
 
     @staticmethod
     def is_git_repo(path: str) -> bool:
@@ -74,7 +72,7 @@ class WorktreeManager:
         try:
             # Get changes committed in the worktree vs the branch point
             result = subprocess.run(
-                ["git", "diff", f"HEAD..{wt_branch}"],
+                ["git", "diff", f"HEAD...{wt_branch}"],
                 cwd=repo_path,
                 env=WorktreeManager._get_env(repo_path),
                 check=True,
@@ -101,14 +99,20 @@ class WorktreeManager:
                 text=True
             )
             # Commit the squashed changes
-            subprocess.run(
-                ["git", "-c", "user.name=Codex Community", "-c", "user.email=community@codex.ai", "commit", "-m", f"feat: apply delegated task changes ({wt_uuid})"],
-                cwd=repo_path,
-                env=WorktreeManager._get_env(repo_path),
-                check=True,
-                capture_output=True,
-                text=True
-            )
+            try:
+                subprocess.run(
+                    ["git", "-c", "user.name=Codex Community", "-c", "user.email=community@codex.ai", "commit", "-m", f"feat: apply delegated task changes ({wt_uuid})"],
+                    cwd=repo_path,
+                    env=WorktreeManager._get_env(repo_path),
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+            except subprocess.CalledProcessError as e:
+                if e.returncode == 1:
+                    logger.info(f"No changes to commit for run {wt_uuid}")
+                else:
+                    raise e
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to apply run: {e.stderr}")

@@ -100,6 +100,9 @@ async def delegate_to_agent(
         res = WorktreeManager.create_worktree(workspace_path)
         if res:
             wt_uuid, target_workspace = res
+            db.update_worker(worker_id, worktree_uuid=wt_uuid, original_workspace=workspace_path)
+        else:
+            return json.dumps({"status": "FAILED", "message": "Error: Failed to create isolated worktree for this task."})
             
     prompt = f"Objective: {objective}\nContext: {context}"
     
@@ -112,9 +115,6 @@ async def delegate_to_agent(
         effort=effort,
         prompt=prompt
     )
-    
-    if wt_uuid:
-        db.update_worker(worker_id, worktree_uuid=wt_uuid, original_workspace=workspace_path)
     
     return json.dumps({
         "status": "STARTED",
@@ -192,7 +192,8 @@ async def apply_agent_run(worker_id: str) -> str:
     success = WorktreeManager.apply_run(orig_workspace, wt_uuid)
     
     if success:
-        return f"Successfully merged worktree {wt_uuid} into main branch."
+        WorktreeManager.cleanup_worktree(orig_workspace, wt_uuid)
+        return f"Successfully merged worktree {wt_uuid} into main branch and cleaned it up."
     else:
         return f"Failed to merge worktree {wt_uuid}. There may be conflicts."
 

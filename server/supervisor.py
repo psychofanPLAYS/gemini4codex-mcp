@@ -104,14 +104,15 @@ class GeminiSupervisor:
                 if loop_state["loop_detected"]:
                     # Try a nudge
                     logger.warning(f"Loop detected for worker {worker_id}. Applying nudge.")
+                    loop_state["loop_detected"] = False
                     response = await agent.chat("SYSTEM NUDGE: Loop detected. You have attempted the same failing action repeatedly. Stop your current approach immediately and try a different strategy, or report failure to Codex.")
                 
                 # Fetch output
                 structured_data = None
                 try:
                     structured_data = await response.structured_output()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"Failed to parse structured output for {worker_id}: {e}")
                 
                 status = "COMPLETED"
                 if structured_data and getattr(structured_data, "status", None) == "FAILED":
@@ -149,7 +150,7 @@ class GeminiSupervisor:
         if not worker:
             self.db.create_worker(worker_id, profile, workspace, model, effort, prompt[:200])
         else:
-            self.db.update_worker(worker_id, state="RUNNING")
+            self.db.update_worker(worker_id, state="RUNNING", profile=profile, workspace=workspace, model=model, effort=effort)
             
         run_id = f"run_{uuid.uuid4().hex[:8]}"
         
