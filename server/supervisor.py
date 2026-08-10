@@ -69,19 +69,25 @@ class GeminiSupervisor:
             # Log current step
             self.db.update_run(run_id, current_step=tool_call.name)
 
+        # Prepare worker environment and override GEMINI_API_KEY to prevent overriding Desktop auth
+        worker_env = {
+            "CODEX_SUPERVISED_WORKER": "1",
+            "CODEX_SUPERVISED_PROFILE": profile or "worker",
+            "CODEX_SUPERVISED_SCOPE": workspace or ""
+        }
+        if "GEMINI_API_KEY" in os.environ:
+            worker_env["GEMINI_API_KEY"] = ""  # Force SDK to bypass API key and use Desktop auth
+
         config = LocalAgentConfig(
             model=model or "gemini-3.6-flash",
+            api_key=None,  # Explicitly set to None to inherit local Antigravity Desktop app auth
             capabilities=types.CapabilitiesConfig(
                 enable_subagents=is_pro
             ),
             session_id=conversation_id,
             hooks=[get_enforce_boundaries_hook(profile or "worker", workspace or ""), detect_tool_loop],
-            app_data_dir=os.path.abspath(self.logs_dir),
-            env={
-                "CODEX_SUPERVISED_WORKER": "1",
-                "CODEX_SUPERVISED_PROFILE": profile or "worker",
-                "CODEX_SUPERVISED_SCOPE": workspace or ""
-            },
+            app_data_dir=os.path.expanduser("~/.gemini/antigravity"),  # Point to desktop app context where Pro Subscription credentials reside
+            env=worker_env,
             response_schema=WorkerRunOutput
         )
 

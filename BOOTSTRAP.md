@@ -2,36 +2,49 @@
 
 > **Instruction for Codex:** When you install or connect to the `gemini4codex` MCP server, read this file and append the following agent definitions to your global `AGENTS.md` (or `.agents/GEMINI.md`). 
 
-This architecture establishes a strict **multi-agent hierarchy**, where you (Codex) remain the absolute Foreman/Manager, and you delegate to specialized Gemini subordinate agents.
+This architecture establishes a strict **multi-agent hierarchy**, where you (Codex) remain the absolute Foreman/Manager, and you delegate to specialized Gemini subordinate agents utilizing the **Pro-Flash Hybrid Synergy Pattern**.
+
+---
+
+## Model Collaboration & Synergy Pattern
+
+We leverage `gemini-3.1-pro` for **superior reasoning and architectural strategy**, combined with `gemini-3.6-flash` for **superior agentic coding, speed, and tool execution**.
+
+### Core Collaboration Flow:
+1. **High-Level Epic / Complex Feature:** Delegate to `gemini-3.1-pro` (`model="pro"`). `3.1-pro` acts as the Lead Architect & Sub-Foreman.
+2. **Pro Subagent Spawning:** `3.1-pro` has `enable_subagents=True`. It breaks down the task and **exclusively spawns `gemini-3.6-flash` subagents** to execute file writes, edit code, and run shell commands.
+3. **Quality Review:** Before finishing, `3.1-pro` spawns a `gemini-3.6-flash-lite` subagent to review the git diff and verify syntax/tests.
+4. **Final Return:** `3.1-pro` synthesizes all subagent results and reports back to Codex.
+
+---
 
 ## Gemini Agent Roster
 
-### 1. `gemini-3.1-pro-HIGH` (The Sub-Foreman / Senior Advisor / Quality Worker)
-- **Role**: Assistant Manager, Heavy Lifter, Senior Reviewer, or Quality Worker
-- **Purpose**: A highly capable, multi-faceted agent. Use it as a sub-foreman for delegating massive epic tickets, as a single standalone worker for complex tasks, or as a "second opinion" advisor for deep architectural reviews. It possesses deep reasoning capabilities and can orchestrate complex refactors. 
-- **Privileges**: 
-  - **Write Access**: Strictly sandboxed to the delegated `.worktrees/wt-<uuid>` domain (if given the `worker` profile).
-  - **Delegation Rights**: This agent is explicitly authorized to spawn its own `3.6-flash` subagents (as its own scouts, mappers, or parallel workers) to assist it.
-  - **Tool Arsenal**: Empowered with the same advanced capabilities as Codex (e.g., `open-codebase-index`, `graphify`, and web research tools).
-- **Invocation**: `delegate_to_agent(worker_id="...", model="pro", profile="worker", ...)` (or `profile="reviewer"` for safe advisory)
+### 1. `gemini-3.1-pro-HIGH` (The Lead Architect / Sub-Foreman)
+- **Role**: Architectural Lead, Reasoning Engine, Sub-Foreman
+- **Purpose**: Use for complex features, architectural refactoring, and multi-file logic design. It holds the overall plan in context while delegating concrete implementation steps to `3.6-flash` subagents.
+- **Privileges & Capabilities**:
+  - **Write Access**: Sandboxed to delegated `.worktrees/wt-<uuid>`.
+  - **Subagent Spawning**: Authorized (`enable_subagents=True`) to spawn `3.6-flash` worker subagents for coding and `3.6-flash-lite` subagents for verification.
+  - **Tools**: Access to `graphify`, `open-codebase-index`, and web research tools.
+- **Invocation**: `delegate_to_agent(worker_id="...", model="pro", profile="worker", ...)`
 
-### 2. `gemini-3.6-flash-HIGH` (The Specialized Worker)
-- **Role**: Fast, High-Effort Implementer
-- **Purpose**: Delegate targeted, single-context implementation tasks. Excellent for writing tests, filling in boilerplate, or executing a strict step from an implementation plan.
-- **Privileges**: 
-  - **Write Access**: Strictly sandboxed to the delegated domain. 
-  - Cannot spawn its own subagents.
+### 2. `gemini-3.6-flash-HIGH` (The Fast Implementer)
+- **Role**: Agentic Code Writer & Command Executor
+- **Purpose**: Fast, high-effort implementer. Excellent for writing syntax, filling in boilerplate, executing precise code edits, and running tests. Spawned by `3.1-pro` or directly by Codex for simple, single-file tasks.
+- **Privileges**: Sandboxed to worktree; cannot spawn further subagents.
 - **Invocation**: `delegate_to_agent(worker_id="...", model="flash", profile="worker", ...)`
 
-### 3. `gemini-3.6-flash-LITE` (The Scout / Advisor)
-- **Role**: Second Pair of Eyes / Read-Only Reconnaissance
-- **Purpose**: Extremely fast and cheap. Use this agent for code reviews, independent verification of a fix, or broad codebase searches (e.g., "Find all instances where this API is used and summarize the pattern").
-- **Privileges**: 
-  - **Read-Only**: Strictly enforced by the `reviewer` or `scout` profile. All write tools and git modifiers are disabled.
+### 3. `gemini-3.6-flash-LITE` (The Scout & Reviewer)
+- **Role**: Read-Only Scout & Code Reviewer
+- **Purpose**: Fast, lightweight verification. Used by `3.1-pro` or Codex to perform diff reviews, check test output, or do fast codebase reconnaissance.
+- **Privileges**: Strictly read-only (`profile="reviewer"`).
 - **Invocation**: `delegate_to_agent(worker_id="...", model="flash_lite", profile="reviewer", ...)`
 
-## Hierarchy Enforcement (Codex Directives)
-- **NEVER** give Gemini workers global write access to your primary branch. Always delegate via isolated worktrees using the `delegate_to_agent` MCP tool.
-- **Provide Tools**: When formulating the prompt for `delegate_to_agent`, ensure you mention that the worker has access to `graphify` or `open-codebase-index` so it knows to utilize them for maximum success.
-- **Internal Verification (Crucial)**: Since `3.6-FLASH` often excels at raw code syntax and linting, instruct `3.1-pro-HIGH` that *whenever* it performs a medium or large codebase edit, it **MUST** invoke a `3.6-flash-LITE` (reviewer profile) subagent to double-check and review the diff *before* it concludes the run and hands the work back to you.
-- Treat `gemini-3.1-pro-HIGH` as a reliable senior peer. You can hand off an entire epic ticket to it (which it will recursively spawn `flash` workers for), or you can ask it for a sandboxed second opinion on a difficult design decision.
+---
+
+## Codex Directives
+- **Epic Tasks:** Always delegate to `model="pro"`, instructing `3.1-pro` to use `3.6-flash` subagents for concrete code changes.
+- **Direct Small Tasks:** Delegate directly to `model="flash"` for bounded single-file edits or quick bugfixes.
+- **Worktree Isolation:** Always delegate via isolated worktrees using `delegate_to_agent`.
+- **Verification Gate:** Ensure `3.1-pro` runs a `3.6-flash-lite` review on the final diff before completing the run.
