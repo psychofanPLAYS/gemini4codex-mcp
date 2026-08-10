@@ -27,6 +27,8 @@ def get_enforce_boundaries_hook(profile: str, workspace: str):
             if tool_name in ["write_to_file", "replace_file_content", "multi_replace_file_content"]:
                 target = tool_args.get("TargetFile") or tool_args.get("path", "")
                 if target:
+                    if not os.path.isabs(target):
+                        target = os.path.join(workspace, target)
                     abs_target = os.path.realpath(target)
                     abs_scope = os.path.realpath(workspace)
                     if os.path.commonpath([abs_scope, abs_target]) != abs_scope:
@@ -35,8 +37,15 @@ def get_enforce_boundaries_hook(profile: str, workspace: str):
                             reason=f"SECURITY ENFORCEMENT: Writing outside workspace '{workspace}' to '{target}' is forbidden."
                         )
 
-        # 3. VCS Protection
+        # 3. VCS Protection and OS Sandboxing
         if tool_name == "run_command":
+            # Prevent OS Sandbox Bypass for all profiles
+            if tool_args.get("BypassSandbox"):
+                return types.HookResult(
+                    allow=False,
+                    reason="SECURITY ENFORCEMENT: Subordinate workers are not allowed to bypass the OS sandbox."
+                )
+                
             cmd = tool_args.get("CommandLine") or tool_args.get("command", "")
             
             blocked_patterns = [

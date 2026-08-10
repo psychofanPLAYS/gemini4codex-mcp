@@ -98,11 +98,14 @@ async def delegate_to_agent(
     target_workspace = workspace_path
     
     if WorktreeManager.is_git_repo(workspace_path):
+        worker = db.get_worker(worker_id)
+        if worker and worker.get("worktree_uuid"):
+            WorktreeManager.cleanup_worktree(worker.get("original_workspace"), worker.get("worktree_uuid"))
+            
         res = WorktreeManager.create_worktree(workspace_path)
         if res:
             wt_uuid, target_workspace = res
             # Save worktree metadata to database before supervisor.delegate()
-            worker = db.get_worker(worker_id)
             if not worker:
                 db.create_worker(worker_id, profile, target_workspace, model, effort, objective[:200])
             db.update_worker(worker_id, worktree_uuid=wt_uuid, original_workspace=workspace_path)
@@ -141,6 +144,9 @@ async def continue_agent_run(
         
     if worker.get("state") == "RUNNING":
         return f"Error: Worker {worker_id} is currently busy."
+        
+    if not worker.get("worktree_uuid"):
+        return f"Error: Worker {worker_id} no longer has an active worktree (it may have been merged or cleaned up). Please start a new task using delegate_to_agent."
         
     run_id = await supervisor.delegate(
         worker_id=worker_id,

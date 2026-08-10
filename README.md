@@ -14,8 +14,8 @@ Unlike other bridges, this delegator treats Gemini workers as resilient backgrou
 
 ## Prerequisites
 
-- [Google Antigravity (`agy` / `gemini`)](https://github.com/google/antigravity) installed globally.
-- Python 3.9+
+- [Google Antigravity (`gemini` CLI)](https://github.com/google/antigravity) installed globally.
+- Python 3.10+
 - Codex CLI (`codex`)
 
 ## Installation & Bootstrapping
@@ -36,7 +36,8 @@ Unlike other bridges, this delegator treats Gemini workers as resilient backgrou
        "--directory", 
        "/ABSOLUTE/PATH/TO/gemini4codex", 
        "run", 
-       "server/gemini_delegator.py"
+       "-m",
+       "server.gemini_delegator"
    ]
    ```
 
@@ -68,12 +69,12 @@ When Codex is connected to the MCP server, it gains access to the following tool
 5. **Codex** periodically calls `get_agent_run_report("db-refactor")`. 
 6. **Codex** reads the `git diff` returned by the report. "Looks good, the tests passed."
 7. **Codex** calls `apply_agent_run("db-refactor")`.
-8. **Delegator Server** squash merges the changes cleanly into the main branch.
+8. **Delegator Server** squash merges the changes cleanly into the main branch but explicitly leaves them staged (no auto-commit), allowing Codex or the human user to review and finalize the commit.
 
 ## Security
 
 This plugin aggressively restricts the Gemini subordinate worker:
-- **Write Jailing**: If a worker is delegated to `./src/frontend`, any attempt to `write_to_file` in `./src/backend` or outside the workspace is instantly rejected by dynamically injected SDK hooks.
+- **True OS Sandboxing**: The Delegator explicitly prevents subordinate workers from bypassing the Antigravity OS sandbox, meaning they are natively isolated from the filesystem at the kernel level and cannot modify files outside the delegated scope.
 - **Git Sandboxing**: Workers are forbidden from running structural git commands (`git commit`, `git push`, `git merge`) or destructive operations (`rm -rf`).
 - **Profile Segregation**: You can delegate a `scout` or `reviewer` profile, which disables all write tools completely.
 

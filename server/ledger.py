@@ -92,14 +92,25 @@ class LedgerDB:
         if not kwargs:
             return
         
+        valid_columns = {"worker_id", "conversation_id", "profile", "workspace", "model", "effort", "created_at", "last_seen_at", "state", "task_summary", "last_run_id", "worktree_uuid", "original_workspace"}
+        
         now = datetime.utcnow().isoformat()
         kwargs['last_seen_at'] = now
         
-        set_clause = ", ".join([f"{k} = ?" for k in kwargs.keys()])
-        values = list(kwargs.values()) + [worker_id]
+        set_clause = []
+        values = []
+        for k, v in kwargs.items():
+            if k in valid_columns:
+                set_clause.append(f"{k} = ?")
+                values.append(v)
+                
+        if not set_clause:
+            return
+            
+        values.append(worker_id)
         
         with self._transaction() as conn:
-            conn.execute(f"UPDATE workers SET {set_clause} WHERE worker_id = ?", values)
+            conn.execute(f"UPDATE workers SET {', '.join(set_clause)} WHERE worker_id = ?", values)
 
     def get_worker(self, worker_id: str) -> Optional[Dict]:
         with self._transaction() as conn:
@@ -129,11 +140,22 @@ class LedgerDB:
         if not kwargs:
             return
             
-        set_clause = ", ".join([f"{k} = ?" for k in kwargs.keys()])
-        values = list(kwargs.values()) + [run_id]
+        valid_columns = {"run_id", "worker_id", "objective", "start_time", "end_time", "status", "pid", "exit_code", "current_step", "result_summary", "error", "log_path"}
+        
+        set_clause = []
+        values = []
+        for k, v in kwargs.items():
+            if k in valid_columns:
+                set_clause.append(f"{k} = ?")
+                values.append(v)
+                
+        if not set_clause:
+            return
+            
+        values.append(run_id)
         
         with self._transaction() as conn:
-            conn.execute(f"UPDATE runs SET {set_clause} WHERE run_id = ?", values)
+            conn.execute(f"UPDATE runs SET {', '.join(set_clause)} WHERE run_id = ?", values)
 
     def get_run(self, run_id: str) -> Optional[Dict]:
         with self._transaction() as conn:

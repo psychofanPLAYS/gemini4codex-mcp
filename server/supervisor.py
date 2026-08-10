@@ -78,9 +78,21 @@ class GeminiSupervisor:
         if "GEMINI_API_KEY" in os.environ:
             worker_env["GEMINI_API_KEY"] = ""  # Force SDK to bypass API key and use Desktop auth
 
+        # Load global GEMINI.md rules if they exist
+        global_rules = ""
+        mcp_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        gemini_md_path = os.path.join(mcp_root, "GEMINI.md")
+        if os.path.exists(gemini_md_path):
+            try:
+                with open(gemini_md_path, "r") as f:
+                    global_rules = f.read()
+            except Exception as e:
+                logger.error(f"Failed to read GEMINI.md: {e}")
+
         config = LocalAgentConfig(
             model=model or "gemini-3.6-flash",
             api_key=None,  # Explicitly set to None to inherit local Antigravity Desktop app auth
+            instructions=global_rules if global_rules else None,
             capabilities=types.CapabilitiesConfig(
                 enable_subagents=is_pro
             ),
@@ -123,13 +135,24 @@ class GeminiSupervisor:
                 elif loop_state["loop_detected"]: # If it looped again
                     status = "FAILED_LOOPING"
                     
+                # Fix Erasure Loop: auto-commit successful runs to their isolated worktree branch
+                if status == "COMPLETED" and profile not in ["scout", "reviewer"] and workspace:
+                    try:
+                        import subprocess
+                        res = subprocess.run(["git", "status", "--porcelain"], cwd=workspace, capture_output=True, text=True)
+                        if res.stdout.strip():
+                            subprocess.run(["git", "add", "-A"], cwd=workspace, check=True)
+                            subprocess.run(["git", "-c", "user.name=Gemini Worker", "-c", "user.email=worker@codex.ai", "commit", "-m", f"Auto-commit worker output ({run_id})"], cwd=workspace, check=True)
+                    except Exception as git_e:
+                        logger.error(f"Failed to auto-commit worker {worker_id} changes: {git_e}")
+                        
                 self.db.update_run(run_id, 
                                    status=status, 
                                    exit_code=0 if status == "COMPLETED" else 1,
                                    current_step="finished",
                                    end_time=datetime.utcnow().isoformat())
                 
-                self.db.update_worker(worker_id, state="IDLE" if status == "COMPLETED" else status, conversation_id=agent.session_id)
+                self.db.update_worker(worker_id, state="IDLE" if status == "COMPLETED" else status, conversation_id=conversation_id)
                 
         except asyncio.CancelledError:
             logger.info(f"Worker {worker_id} run {run_id} was cancelled.")
@@ -182,5 +205,9 @@ class GeminiSupervisor:
         task = self._active_tasks.get(run_id)
         if task:
             task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
             return True
         return False

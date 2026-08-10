@@ -40,20 +40,15 @@ class WorktreeManager:
 
         wt_uuid = str(uuid.uuid4())[:8]
         wt_branch = f"wt-{wt_uuid}"
-        wt_rel_path = f".worktrees/{wt_branch}"
-        wt_abs_path = os.path.join(repo_path, wt_rel_path)
-
-        # Ensure .worktrees directory exists and is ignored
-        os.makedirs(os.path.join(repo_path, ".worktrees"), exist_ok=True)
-        gitignore_path = os.path.join(repo_path, ".worktrees", ".gitignore")
-        if not os.path.exists(gitignore_path):
-            with open(gitignore_path, "w") as f:
-                f.write("*\n")
+        
+        wt_base_dir = os.path.expanduser("~/.codex/gemini-delegator/worktrees")
+        os.makedirs(wt_base_dir, exist_ok=True)
+        wt_abs_path = os.path.join(wt_base_dir, wt_branch)
 
         try:
             # Create worktree
             subprocess.run(
-                ["git", "worktree", "add", "-b", wt_branch, wt_rel_path, "HEAD"],
+                ["git", "worktree", "add", "-b", wt_branch, wt_abs_path, "HEAD"],
                 cwd=repo_path,
                 env=WorktreeManager._get_env(repo_path),
                 check=True,
@@ -98,21 +93,8 @@ class WorktreeManager:
                 capture_output=True,
                 text=True
             )
-            # Commit the squashed changes
-            try:
-                subprocess.run(
-                    ["git", "-c", "user.name=Codex Community", "-c", "user.email=community@codex.ai", "commit", "-m", f"feat: apply delegated task changes ({wt_uuid})"],
-                    cwd=repo_path,
-                    env=WorktreeManager._get_env(repo_path),
-                    check=True,
-                    capture_output=True,
-                    text=True
-                )
-            except subprocess.CalledProcessError as e:
-                if e.returncode == 1:
-                    logger.info(f"No changes to commit for run {wt_uuid}")
-                else:
-                    raise e
+            # Successfully squashed, changes are now staged in the index.
+            # We explicitly do NOT auto-commit, allowing Codex/User to review.
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to apply run: {e.stderr}")
@@ -124,26 +106,35 @@ class WorktreeManager:
     def cleanup_worktree(repo_path: str, wt_uuid: str) -> bool:
         """Removes the worktree and its temporary branch."""
         wt_branch = f"wt-{wt_uuid}"
-        wt_rel_path = f".worktrees/{wt_branch}"
-        wt_abs_path = os.path.join(repo_path, wt_rel_path)
+        wt_base_dir = os.path.expanduser("~/.codex/gemini-delegator/worktrees")
+        wt_abs_path = os.path.join(wt_base_dir, wt_branch)
 
+        success = True
         try:
             # Force remove worktree
-            subprocess.run(
+            res = subprocess.run(
                 ["git", "worktree", "remove", "--force", wt_abs_path],
                 cwd=repo_path,
                 env=WorktreeManager._get_env(repo_path),
                 capture_output=True,
                 text=True
             )
+            if res.returncode != 0:
+                logger.error(f"Failed to remove worktree {wt_abs_path}: {res.stderr}")
+                success = False
+
             # Delete branch
-            subprocess.run(
+            res = subprocess.run(
                 ["git", "branch", "-D", wt_branch],
                 cwd=repo_path,
                 env=WorktreeManager._get_env(repo_path),
                 capture_output=True,
                 text=True
             )
+            if res.returncode != 0:
+                logger.error(f"Failed to delete branch {wt_branch}: {res.stderr}")
+                success = False
+
             # Prune
             subprocess.run(
                 ["git", "worktree", "prune"],
@@ -152,7 +143,7 @@ class WorktreeManager:
                 capture_output=True,
                 text=True
             )
-            return True
+            return success
         except Exception as e:
             logger.error(f"Error during worktree cleanup: {e}")
             return False
