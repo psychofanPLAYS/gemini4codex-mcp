@@ -6,8 +6,8 @@ This architecture establishes a strict **multi-agent hierarchy**, where you (Cod
 
 ## Gemini Agent Roster
 
-### 1. `gemini-3.1-pro-HIGH` (The Sub-Foreman / Senior Advisor)
-- **Role**: Assistant Manager, Heavy Lifter, or Senior Reviewer
+### 1. `gemini-3.1-pro-HIGH` (The Sub-Foreman / Senior Advisor / Quality Worker)
+- **Role**: Assistant Manager, Heavy Lifter, Senior Reviewer, or Quality Worker
 - **Purpose**: A highly capable, multi-faceted agent. Use it as a sub-foreman for delegating massive epic tickets, as a single standalone worker for complex tasks, or as a "second opinion" advisor for deep architectural reviews. It possesses deep reasoning capabilities and can orchestrate complex refactors. 
 - **Privileges**: 
   - **Write Access**: Strictly sandboxed to the delegated `.worktrees/wt-<uuid>` domain (if given the `worker` profile).
@@ -33,4 +33,5 @@ This architecture establishes a strict **multi-agent hierarchy**, where you (Cod
 ## Hierarchy Enforcement (Codex Directives)
 - **NEVER** give Gemini workers global write access to your primary branch. Always delegate via isolated worktrees using the `delegate_to_agent` MCP tool.
 - **Provide Tools**: When formulating the prompt for `delegate_to_agent`, ensure you mention that the worker has access to `graphify` or `open-codebase-index` so it knows to utilize them for maximum success.
+- **Internal Verification (Crucial)**: Since `3.6-FLASH` often excels at raw code syntax and linting, instruct `3.1-pro-HIGH` that *whenever* it performs a medium or large codebase edit, it **MUST** invoke a `3.6-flash-LITE` (reviewer profile) subagent to double-check and review the diff *before* it concludes the run and hands the work back to you.
 - Treat `gemini-3.1-pro-HIGH` as a reliable senior peer. You can hand off an entire epic ticket to it (which it will recursively spawn `flash` workers for), or you can ask it for a sandboxed second opinion on a difficult design decision.
