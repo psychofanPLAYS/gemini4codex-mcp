@@ -25,15 +25,12 @@ def list_agent_backends() -> str:
     """List available agent backends and check their health."""
     checks = []
     
-    # Check agy/gemini CLI
+    # Check Antigravity SDK
     try:
-        res = subprocess.run(["gemini", "--version"], capture_output=True, text=True, timeout=5)
-        if res.returncode == 0:
-            checks.append("✅ gemini CLI found")
-        else:
-            checks.append("❌ gemini CLI failed")
-    except FileNotFoundError:
-        checks.append("❌ gemini CLI missing")
+        import google.antigravity
+        checks.append("✅ google-antigravity SDK found")
+    except ImportError:
+        checks.append("❌ google-antigravity SDK missing")
         
     # Check DB
     try:

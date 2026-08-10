@@ -3,176 +3,142 @@ import json
 import logging
 import uuid
 import os
+import hashlib
 from datetime import datetime
+from pydantic import BaseModel, Field
+
+from google.antigravity import Agent, LocalAgentConfig, types
+from google.antigravity.hooks import hooks
+
 from .ledger import LedgerDB
+from .security import get_enforce_boundaries_hook
 
 logger = logging.getLogger(__name__)
+
+class WorkerRunOutput(BaseModel):
+    status: str = Field(description="'COMPLETED', 'FAILED', or 'BLOCKED'")
+    summary: str = Field(description="Summary of what was achieved")
+    files_modified: list[str] = Field(description="List of files that were modified")
+    blockers: list[str] = Field(description="List of blockers or errors encountered")
 
 class GeminiSupervisor:
     def __init__(self, db: LedgerDB, logs_dir: str = None):
         self.db = db
         self.logs_dir = logs_dir or os.path.expanduser("~/.codex/gemini-delegator/logs")
         os.makedirs(self.logs_dir, exist_ok=True)
-        # Track active processes
+        # Track active tasks instead of PIDs
         self._active_tasks = {}
+        self._active_agents = {} # Maps run_id to Agent instance for cancellation
 
     async def _run_gemini(self, worker_id: str, run_id: str, prompt: str, conversation_id: str = None, model: str = None, profile: str = None, workspace: str = None):
-        import hashlib
+        log_path = os.path.join(self.logs_dir, f"{worker_id}_{run_id}.log")
         
-        def _hash_tool(t_name, t_args):
-            return hashlib.sha256((str(t_name) + json.dumps(t_args, sort_keys=True)).encode()).hexdigest()
+        # Determine capabilities
+        is_pro = "pro" in (model or "").lower()
+        
+        # State for loop detection
+        loop_state = {
+            "last_tool_hash": None,
+            "repeat_count": 0,
+            "failure_count": 0,
+            "loop_detected": False
+        }
+        
+        @hooks.post_tool_call
+        async def detect_tool_loop(tool_call: types.ToolCall, result: types.ToolResult):
+            # Check for failures
+            if result.is_error:
+                loop_state["failure_count"] += 1
+            else:
+                loop_state["failure_count"] = 0
+                
+            if loop_state["failure_count"] >= 4:
+                loop_state["loop_detected"] = True
+                
+            # Check for identical repeats
+            h = hashlib.sha256(f"{tool_call.name}:{json.dumps(tool_call.args or {}, sort_keys=True)}".encode()).hexdigest()
+            if h == loop_state["last_tool_hash"]:
+                loop_state["repeat_count"] += 1
+            else:
+                loop_state["last_tool_hash"] = h
+                loop_state["repeat_count"] = 1
+                
+            if loop_state["repeat_count"] >= 3:
+                loop_state["loop_detected"] = True
+                
+            # Log current step
+            self.db.update_run(run_id, current_step=tool_call.name)
 
-        max_nudges = 2
-        nudges_used = 0
-        current_prompt = prompt
+        config = LocalAgentConfig(
+            model=model or "gemini-3.6-flash",
+            capabilities=types.CapabilitiesConfig(
+                enable_subagents=is_pro
+            ),
+            session_id=conversation_id,
+            hooks=[get_enforce_boundaries_hook(profile or "worker", workspace or ""), detect_tool_loop],
+            app_data_dir=os.path.abspath(self.logs_dir),
+            env={
+                "CODEX_SUPERVISED_WORKER": "1",
+                "CODEX_SUPERVISED_PROFILE": profile or "worker",
+                "CODEX_SUPERVISED_SCOPE": workspace or ""
+            },
+            response_schema=WorkerRunOutput
+        )
+
+        logger.info(f"Starting native gemini worker {worker_id} run {run_id}")
+        self.db.create_run(run_id, worker_id, objective=prompt[:100], pid=0, log_path=log_path)
+
+        agent = Agent(config)
+        self._active_agents[run_id] = agent
         
-        while nudges_used <= max_nudges:
-            log_path = os.path.join(self.logs_dir, f"{worker_id}_{run_id}_{nudges_used}.log")
-            
-            # Build the command
-            cmd = ["gemini", "--output-format", "stream-json"]
-            
-            if conversation_id:
-                cmd.extend(["--session-id", conversation_id])
-            if model:
-                cmd.extend(["-m", model])
-            if workspace:
-                cmd.extend(["--include-directories", workspace])
+        try:
+            async with agent:
+                response = await agent.chat(prompt)
                 
-            cmd.extend(["-p", current_prompt])
-            
-            env = os.environ.copy()
-            env["CODEX_SUPERVISED_WORKER"] = "1"
-            if model:
-                env["CODEX_SUPERVISED_MODEL"] = model
-            if profile:
-                env["CODEX_SUPERVISED_PROFILE"] = profile
-            if workspace:
-                env["CODEX_SUPERVISED_SCOPE"] = workspace
+                if loop_state["loop_detected"]:
+                    # Try a nudge
+                    logger.warning(f"Loop detected for worker {worker_id}. Applying nudge.")
+                    response = await agent.chat("SYSTEM NUDGE: Loop detected. You have attempted the same failing action repeatedly. Stop your current approach immediately and try a different strategy, or report failure to Codex.")
                 
-            logger.info(f"Starting gemini worker {worker_id} run {run_id} (nudge {nudges_used})")
-            
-            try:
-                # Create process
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,  # Prevent deadlock by merging stderr into stdout
-                    env=env,
-                    cwd=workspace if workspace else None
-                )
+                # Fetch output
+                structured_data = None
+                try:
+                    structured_data = await response.structured_output()
+                except Exception:
+                    pass
                 
-                # Update DB with PID
-                self.db.create_run(run_id, worker_id, objective=current_prompt[:100], pid=process.pid, log_path=log_path)
-                
-                consecutive_failures = 0
-                last_tool_hash = None
-                consecutive_same_tools = 0
-                loop_detected = False
-                
-                with open(log_path, "w") as log_file:
-                    log_file.write(f"--- START RUN {run_id} (Worker {worker_id}) ---\n")
+                status = "COMPLETED"
+                if structured_data and getattr(structured_data, "status", None) == "FAILED":
+                    status = "FAILED"
+                elif loop_state["loop_detected"]: # If it looped again
+                    status = "FAILED_LOOPING"
                     
-                    # Read stdout line by line
-                    async for line in process.stdout:
-                        line_str = line.decode('utf-8').strip()
-                        if not line_str:
-                            continue
-                        
-                        log_file.write(line_str + "\n")
-                        log_file.flush()
-                        
-                        try:
-                            event = json.loads(line_str)
-                            if isinstance(event, dict):
-                                # Extract conversation_id if not known
-                                if not conversation_id and event.get("type") == "session_start" and "session_id" in event:
-                                    conversation_id = event["session_id"]
-                                    self.db.update_worker(worker_id, conversation_id=conversation_id)
-                                    
-                                # Track current step
-                                if "type" in event and event["type"] in ("tool_call", "model_response"):
-                                    step = event.get("tool_name", event["type"])
-                                    self.db.update_run(run_id, current_step=step)
-                                
-                                # Loop detection logic
-                                if "type" in event and event["type"] == "tool_call":
-                                    t_name = event.get("tool_name", "")
-                                    t_args = event.get("tool_args", {})
-                                    h = _hash_tool(t_name, t_args)
-                                    if h == last_tool_hash:
-                                        consecutive_same_tools += 1
-                                    else:
-                                        last_tool_hash = h
-                                        consecutive_same_tools = 1
-                                        
-                                    if consecutive_same_tools >= 3:
-                                        loop_detected = True
-                                        
-                                elif "type" in event and event["type"] == "tool_response":
-                                    if not event.get("success", True):
-                                        consecutive_failures += 1
-                                    else:
-                                        consecutive_failures = 0
-                                        
-                                    if consecutive_failures >= 4:
-                                        loop_detected = True
-                                        
-                                if loop_detected:
-                                    logger.warning(f"Loop detected for worker {worker_id}. Terminating process.")
-                                    process.terminate()
-                                    break
-                                        
-                        except json.JSONDecodeError:
-                            pass
-                    
-                    # Wait for process to exit
-                    try:
-                        await asyncio.wait_for(process.wait(), timeout=5.0)
-                    except asyncio.TimeoutError:
-                        logger.warning(f"Process {process.pid} hung on termination, sending SIGKILL.")
-                        process.kill()
-                        await process.wait()
-                    
-                    exit_code = process.returncode
-                    
-                    if loop_detected:
-                        if nudges_used < max_nudges:
-                            nudges_used += 1
-                            current_prompt = "SYSTEM NUDGE: Loop detected. You have attempted the same failing action repeatedly. Stop your current approach immediately and try a different strategy, or report failure to Codex."
-                            logger.info(f"Applying nudge {nudges_used} to worker {worker_id}")
-                            continue  # Restart the loop with new prompt
-                        else:
-                            status = "FAILED_LOOPING"
-                            exit_code = 1
-                    else:
-                        status = "COMPLETED" if exit_code == 0 else "FAILED"
-                    
-                    logger.info(f"Worker {worker_id} run {run_id} finished with code {exit_code}")
-                    
-                    self.db.update_run(run_id, 
-                                       status=status, 
-                                       exit_code=exit_code, 
-                                       end_time=datetime.utcnow().isoformat())
-                    
-                    self.db.update_worker(worker_id, state="IDLE" if exit_code == 0 else status)
-                    break # Break out of the nudge loop if finished or out of nudges
-                    
-            except Exception as e:
-                logger.error(f"Error running worker {worker_id}: {e}")
                 self.db.update_run(run_id, 
-                                   status="FAILED", 
-                                   error=str(e), 
+                                   status=status, 
+                                   exit_code=0 if status == "COMPLETED" else 1,
+                                   current_step="finished",
                                    end_time=datetime.utcnow().isoformat())
-                self.db.update_worker(worker_id, state="FAILED")
-                break
-        
-        # Finally block cleanup is handled after the while loop finishes
-        if run_id in self._active_tasks:
-            del self._active_tasks[run_id]
+                
+                self.db.update_worker(worker_id, state="IDLE" if status == "COMPLETED" else status, conversation_id=agent.session_id)
+                
+        except asyncio.CancelledError:
+            logger.info(f"Worker {worker_id} run {run_id} was cancelled.")
+            self.db.update_run(run_id, status="CANCELLED", end_time=datetime.utcnow().isoformat())
+            self.db.update_worker(worker_id, state="IDLE")
+        except Exception as e:
+            logger.error(f"Error running worker {worker_id}: {e}")
+            self.db.update_run(run_id, 
+                               status="FAILED", 
+                               error=str(e), 
+                               end_time=datetime.utcnow().isoformat())
+            self.db.update_worker(worker_id, state="FAILED")
+        finally:
+            if run_id in self._active_tasks:
+                del self._active_tasks[run_id]
+            if run_id in self._active_agents:
+                del self._active_agents[run_id]
 
     async def delegate(self, worker_id: str, profile: str, workspace: str, model: str, effort: str, prompt: str):
-        # Create worker in DB if new
         worker = self.db.get_worker(worker_id)
         if not worker:
             self.db.create_worker(worker_id, profile, workspace, model, effort, prompt[:200])
@@ -181,7 +147,6 @@ class GeminiSupervisor:
             
         run_id = f"run_{uuid.uuid4().hex[:8]}"
         
-        # Start background task
         task = asyncio.create_task(self._run_gemini(
             worker_id=worker_id,
             run_id=run_id,
@@ -204,14 +169,8 @@ class GeminiSupervisor:
         if not run_id:
             return False
             
-        run = self.db.get_run(run_id)
-        if not run or not run.get("pid"):
-            return False
-            
-        try:
-            os.kill(run["pid"], 15) # SIGTERM
-            self.db.update_run(run_id, status="CANCELLED", end_time=datetime.utcnow().isoformat())
-            self.db.update_worker(worker_id, state="IDLE")
+        task = self._active_tasks.get(run_id)
+        if task:
+            task.cancel()
             return True
-        except OSError:
-            return False
+        return False
