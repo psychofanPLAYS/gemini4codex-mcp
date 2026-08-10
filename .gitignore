@@ -1,0 +1,21 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDEs and environments
+.vscode/
+.idea/
+.env
+venv/
+env/
+ENV/
+
+# Repository specific ignores
+.worktrees/
+*.log
+
+# Database
+ledger.db
+ledger.db-wal
+ledger.db-shm

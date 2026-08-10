@@ -1,0 +1,7 @@
+{
+  "command": "python",
+  "args": ["-m", "gemini_delegator"],
+  "env": {
+    "PYTHONPATH": "../../server"
+  }
+}

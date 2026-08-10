@@ -1,0 +1,17 @@
+{
+  "name": "gemini4codex",
+  "version": "2.0.0",
+  "description": "Delegates Codex tasks to Antigravity/Gemini agents in isolated worktrees.",
+  "author": "Codex Community",
+  "mcp": {
+    "servers": {
+      "gemini-delegator": {
+        "command": "python3",
+        "args": ["server/gemini_delegator.py"]
+      }
+    }
+  },
+  "skills": [
+    "plugin/skills/delegate-to-gemini/SKILL.md"
+  ]
+}

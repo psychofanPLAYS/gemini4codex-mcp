@@ -1,0 +1,13 @@
+{
+  "name": "gemini-delegator@codex-local",
+  "version": "1.0.0",
+  "description": "Codex integration to delegate tasks to Gemini/Antigravity workers.",
+  "type": "plugin",
+  "mcp_servers": {
+    "gemini-delegator": {
+      "path": ".mcp.json"
+    }
+  },
+  "hooks": "hooks/hooks.json",
+  "skills": "skills"
+}

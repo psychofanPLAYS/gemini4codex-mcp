@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gemini4codex"
+version = "2.0.0"
+description = "A robust MCP server for delegating OpenAI Codex tasks to Google Antigravity/Gemini workers in isolated Git worktrees."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "Codex Community" }
+]
+keywords = ["mcp", "codex", "gemini", "antigravity", "agents", "git-worktree"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "mcp>=0.1.0",
+    "fastmcp>=0.1.0",
+    "pydantic>=2.0.0"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/gemini4codex"
+"Bug Tracker" = "https://github.com/yourusername/gemini4codex/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["server", "antigravity-plugin"]
