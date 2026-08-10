@@ -12,7 +12,8 @@ mcp = FastMCP(
     "Codex Gemini Delegator V2",
     instructions="\"\"\"Gemini workers are subordinate to Codex. Check list_agent_runs before spawning work. "
     "Reuse existing worker IDs for the same workstream. Delegate bounded tasks with explicit scope and success criteria. "
-    "Codex owns final decisions and must verify Gemini results. Never auto-commit, push, or merge delegated work.\"\"\""
+    "Codex owns final decisions and must verify Gemini results. Never auto-commit, push, or merge delegated work. "
+    "Maintain balanced usage: do not exclusively use only Gemini workers or only OEM subagents. Learn where Gemini is most useful to you and adhere to any custom user instructions for delegation.\"\"\""
 )
 
 # Initialize DB and Supervisor

@@ -22,7 +22,7 @@ Unlike other bridges, this delegator treats Gemini workers as resilient backgrou
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/gemini4codex.git
+   git clone https://github.com/psychofanplays/gemini4codex-mcp.git
    cd gemini4codex
    ```
 

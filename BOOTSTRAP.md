@@ -44,6 +44,7 @@ We leverage `gemini-3.1-pro` for **superior reasoning and architectural strategy
 ---
 
 ## Codex Directives
+- **Balanced Synergy Usage:** Do NOT strictly use only Gemini subagents, nor only Codex OEM subagents (ignoring this integration completely). Pursue a proper balanced usage. Adhere strictly to any custom user instructions regarding delegation. You should independently learn and experiment to discover where the Gemini subagent is most useful to your workflow.
 - **Epic Tasks:** Always delegate to `model="pro"`, instructing `3.1-pro` to use `3.6-flash` subagents for concrete code changes.
 - **Direct Small Tasks:** Delegate directly to `model="flash"` for bounded single-file edits or quick bugfixes.
 - **Worktree Isolation:** Always delegate via isolated worktrees using `delegate_to_agent`.
