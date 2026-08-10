@@ -29,7 +29,7 @@ def main():
         for w in idle[:3]:
             print(f"IDLE {w['worker_id']}: {w['task_summary']}")
             
-        print("Use gemini_overview before spawning overlapping Gemini work. Continue existing worker IDs when the workstream matches.")
+        print("Use list_agent_runs before spawning overlapping Gemini work. Continue existing worker IDs when the workstream matches.")
         print("</system_message>")
         
     except Exception as e:
