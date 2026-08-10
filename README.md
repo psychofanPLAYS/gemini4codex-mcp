@@ -61,7 +61,7 @@ When Codex is connected to the MCP server, it gains access to the following tool
 
 1. **Codex**: "I need to refactor the database schema, but I don't want to break the app. I'll delegate this to a Gemini worker."
 2. **Codex** calls `delegate_to_agent(worker_id="db-refactor", workspace_path=".")`
-3. **Delegator Server** creates `.worktrees/wt-5f8a9b2c` and spawns `gemini -p ...` inside it.
+3. **Delegator Server** creates `.worktrees/wt-5f8a9b2c` and runs the `google.antigravity` SDK in-process inside it.
 4. **Gemini** works in the background, modifying files. If it loops or gets stuck, the Supervisor auto-nudges it.
 5. **Codex** periodically calls `get_agent_run_report("db-refactor")`. 
 6. **Codex** reads the `git diff` returned by the report. "Looks good, the tests passed."
