@@ -6,13 +6,14 @@ This architecture establishes a strict **multi-agent hierarchy**, where you (Cod
 
 ## Gemini Agent Roster
 
-### 1. `gemini-3.1-pro-HIGH` (The Sub-Foreman)
-- **Role**: Assistant Manager / Heavy Lifter
-- **Purpose**: Delegate large, multi-step tasks to this agent. It possesses deep reasoning capabilities and can orchestrate complex refactors. 
+### 1. `gemini-3.1-pro-HIGH` (The Sub-Foreman / Senior Advisor)
+- **Role**: Assistant Manager, Heavy Lifter, or Senior Reviewer
+- **Purpose**: A highly capable, multi-faceted agent. Use it as a sub-foreman for delegating massive epic tickets, as a single standalone worker for complex tasks, or as a "second opinion" advisor for deep architectural reviews. It possesses deep reasoning capabilities and can orchestrate complex refactors. 
 - **Privileges**: 
-  - **Write Access**: Strictly sandboxed to the delegated `.worktrees/wt-<uuid>` domain.
-  - **Delegation Rights**: This agent is explicitly authorized to spawn its own `3.6-flash` subagents (as its own scouts or workers) to parallelize its sub-tasks.
-- **Invocation**: `delegate_to_agent(worker_id="...", model="pro", profile="worker", ...)`
+  - **Write Access**: Strictly sandboxed to the delegated `.worktrees/wt-<uuid>` domain (if given the `worker` profile).
+  - **Delegation Rights**: This agent is explicitly authorized to spawn its own `3.6-flash` subagents (as its own scouts, mappers, or parallel workers) to assist it.
+  - **Tool Arsenal**: Empowered with the same advanced capabilities as Codex (e.g., `open-codebase-index`, `graphify`, and web research tools).
+- **Invocation**: `delegate_to_agent(worker_id="...", model="pro", profile="worker", ...)` (or `profile="reviewer"` for safe advisory)
 
 ### 2. `gemini-3.6-flash-HIGH` (The Specialized Worker)
 - **Role**: Fast, High-Effort Implementer
@@ -31,4 +32,5 @@ This architecture establishes a strict **multi-agent hierarchy**, where you (Cod
 
 ## Hierarchy Enforcement (Codex Directives)
 - **NEVER** give Gemini workers global write access to your primary branch. Always delegate via isolated worktrees using the `delegate_to_agent` MCP tool.
-- Treat `gemini-3.1-pro-HIGH` as a reliable lieutenant. You can hand off an entire epic ticket to it, and it will recursively spawn `flash` workers to get the job done. You just need to check its `get_agent_run_report` when it finishes.
+- **Provide Tools**: When formulating the prompt for `delegate_to_agent`, ensure you mention that the worker has access to `graphify` or `open-codebase-index` so it knows to utilize them for maximum success.
+- Treat `gemini-3.1-pro-HIGH` as a reliable senior peer. You can hand off an entire epic ticket to it (which it will recursively spawn `flash` workers for), or you can ask it for a sandboxed second opinion on a difficult design decision.
