@@ -83,6 +83,24 @@ class WorktreeManager:
     def apply_run(repo_path: str, wt_uuid: str) -> bool:
         """Merges the worktree branch into the current branch and squashes it."""
         wt_branch = f"wt-{wt_uuid}"
+        
+        # Pre-flight check: ensure main repository working tree is clean
+        try:
+            res = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=repo_path,
+                env=WorktreeManager._get_env(repo_path),
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            if res.stdout.strip():
+                logger.error("Cannot apply agent run: The main repository has uncommitted changes.")
+                return False
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to check git status: {e.stderr}")
+            return False
+            
         try:
             # Squash merge the branch
             subprocess.run(

@@ -48,21 +48,33 @@ def get_enforce_boundaries_hook(profile: str, workspace: str):
                 
             cmd = tool_args.get("CommandLine") or tool_args.get("command", "")
             
-            blocked_patterns = [
-                r"\bgit\s+commit\b",
-                r"\bgit\s+push\b",
-                r"\bgit\s+merge\b",
-                r"\bgit\s+reset\b",
-                r"\bgit\s+clean\b",
-                r"\brm\s+.*?-[rR].*?f\b",
-                r"\brm\s+.*?-[fF].*?r\b",
-                r"\brm\s+-rf\b"
-            ]
-            if any(re.search(p, cmd) for p in blocked_patterns):
+            import shlex
+            try:
+                tokens = shlex.split(cmd)
+            except ValueError:
                 return types.HookResult(
                     allow=False,
-                    reason=f"SECURITY ENFORCEMENT: Destructive command '{cmd}' is blocked for subordinate workers."
+                    reason=f"SECURITY ENFORCEMENT: Malformed command string '{cmd}'."
                 )
+                
+            cmd_lower = cmd.lower()
+            
+            # Check for destructive git operations
+            if "git " in cmd_lower or cmd_lower.startswith("git"):
+                if any(t in tokens for t in ["commit", "push", "merge", "reset", "clean"]):
+                    return types.HookResult(
+                        allow=False,
+                        reason=f"SECURITY ENFORCEMENT: Destructive git operation in '{cmd}' is blocked for subordinate workers."
+                    )
+                    
+            # Check for recursive force removal
+            if "rm" in tokens or "rmdir" in tokens:
+                flags = "".join([t for t in tokens if t.startswith("-")]).replace("-", "")
+                if "r" in flags and "f" in flags:
+                    return types.HookResult(
+                        allow=False,
+                        reason=f"SECURITY ENFORCEMENT: Destructive command '{cmd}' is blocked for subordinate workers."
+                    )
                 
         return types.HookResult(allow=True)
         

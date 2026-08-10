@@ -69,14 +69,11 @@ class GeminiSupervisor:
             # Log current step
             self.db.update_run(run_id, current_step=tool_call.name)
 
-        # Prepare worker environment and override GEMINI_API_KEY to prevent overriding Desktop auth
         worker_env = {
             "CODEX_SUPERVISED_WORKER": "1",
             "CODEX_SUPERVISED_PROFILE": profile or "worker",
             "CODEX_SUPERVISED_SCOPE": workspace or ""
         }
-        if "GEMINI_API_KEY" in os.environ:
-            worker_env["GEMINI_API_KEY"] = ""  # Force SDK to bypass API key and use Desktop auth
 
         # Load global GEMINI.md rules if they exist
         global_rules = ""
@@ -176,7 +173,7 @@ class GeminiSupervisor:
         if not worker:
             self.db.create_worker(worker_id, profile, workspace, model, effort, prompt[:200])
         else:
-            self.db.update_worker(worker_id, state="RUNNING", profile=profile, workspace=workspace, model=model, effort=effort)
+            self.db.update_worker(worker_id, state="INITIALIZING", profile=profile, workspace=workspace, model=model, effort=effort)
             
         run_id = f"run_{uuid.uuid4().hex[:8]}"
         
