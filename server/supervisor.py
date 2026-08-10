@@ -43,6 +43,8 @@ class GeminiSupervisor:
             
             env = os.environ.copy()
             env["CODEX_SUPERVISED_WORKER"] = "1"
+            if model:
+                env["CODEX_SUPERVISED_MODEL"] = model
             if profile:
                 env["CODEX_SUPERVISED_PROFILE"] = profile
             if workspace:

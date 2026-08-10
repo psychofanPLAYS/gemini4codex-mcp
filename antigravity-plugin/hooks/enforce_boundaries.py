@@ -19,6 +19,16 @@ def main():
         
         profile = os.environ.get("CODEX_SUPERVISED_PROFILE", "worker")
         scope = os.environ.get("CODEX_SUPERVISED_SCOPE", "")
+        model = os.environ.get("CODEX_SUPERVISED_MODEL", "").lower()
+        
+        # Enforce Subagent Deployment (Only PRO is allowed)
+        if tool_name in ["invoke_subagent", "define_subagent"]:
+            if "pro" not in model:
+                print(json.dumps({
+                    "allowed": False,
+                    "reason": f"SECURITY ENFORCEMENT: Your model tier ({model}) is not authorized to deploy sub-sub agents. Only 'pro' models can be sub-foremen."
+                }))
+                sys.exit(1)
         
         # Deny all structural VCS operations
         if tool_name == "run_command":

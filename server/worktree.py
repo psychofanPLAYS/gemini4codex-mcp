@@ -15,6 +15,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "rev-parse", "--is-inside-work-tree"],
                 cwd=path,
+                env={"HOME": path, "PATH": os.environ.get("PATH", "")},
                 check=True,
                 capture_output=True,
                 text=True
@@ -50,6 +51,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "worktree", "add", "-b", wt_branch, wt_rel_path, "HEAD"],
                 cwd=repo_path,
+                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
                 check=True,
                 capture_output=True,
                 text=True
@@ -71,6 +73,7 @@ class WorktreeManager:
             result = subprocess.run(
                 ["git", "diff", f"HEAD..{wt_branch}"],
                 cwd=repo_path,
+                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
                 check=True,
                 capture_output=True,
                 text=True
@@ -89,14 +92,16 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "merge", "--squash", wt_branch],
                 cwd=repo_path,
+                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
                 check=True,
                 capture_output=True,
                 text=True
             )
             # Commit the squashed changes
             subprocess.run(
-                ["git", "commit", "-m", f"feat: apply delegated task changes ({wt_uuid})"],
+                ["git", "-c", "user.name=Codex Community", "-c", "user.email=community@codex.ai", "commit", "-m", f"feat: apply delegated task changes ({wt_uuid})"],
                 cwd=repo_path,
+                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
                 check=True,
                 capture_output=True,
                 text=True
@@ -105,8 +110,8 @@ class WorktreeManager:
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to apply run: {e.stderr}")
             # Abort merge if it failed
-            subprocess.run(["git", "reset", "--hard", "HEAD"], cwd=repo_path, capture_output=True)
-            subprocess.run(["git", "clean", "-fd"], cwd=repo_path, capture_output=True)
+            subprocess.run(["git", "reset", "--hard", "HEAD"], cwd=repo_path, env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")}, capture_output=True)
+            subprocess.run(["git", "clean", "-fd"], cwd=repo_path, env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")}, capture_output=True)
             return False
 
     @staticmethod
@@ -121,6 +126,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "worktree", "remove", "--force", wt_abs_path],
                 cwd=repo_path,
+                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
                 capture_output=True,
                 text=True
             )
@@ -128,6 +134,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "branch", "-D", wt_branch],
                 cwd=repo_path,
+                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
                 capture_output=True,
                 text=True
             )
@@ -135,6 +142,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "worktree", "prune"],
                 cwd=repo_path,
+                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
                 capture_output=True,
                 text=True
             )
