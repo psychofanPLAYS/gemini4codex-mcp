@@ -105,6 +105,9 @@ class GeminiSupervisor:
                     # Try a nudge
                     logger.warning(f"Loop detected for worker {worker_id}. Applying nudge.")
                     loop_state["loop_detected"] = False
+                    loop_state["repeat_count"] = 0
+                    loop_state["failure_count"] = 0
+                    loop_state["last_tool_hash"] = None
                     response = await agent.chat("SYSTEM NUDGE: Loop detected. You have attempted the same failing action repeatedly. Stop your current approach immediately and try a different strategy, or report failure to Codex.")
                 
                 # Fetch output

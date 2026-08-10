@@ -100,6 +100,10 @@ async def delegate_to_agent(
         res = WorktreeManager.create_worktree(workspace_path)
         if res:
             wt_uuid, target_workspace = res
+            # Save worktree metadata to database before supervisor.delegate()
+            worker = db.get_worker(worker_id)
+            if not worker:
+                db.create_worker(worker_id, profile, target_workspace, model, effort, objective[:200])
             db.update_worker(worker_id, worktree_uuid=wt_uuid, original_workspace=workspace_path)
         else:
             return json.dumps({"status": "FAILED", "message": "Error: Failed to create isolated worktree for this task."})
@@ -193,6 +197,7 @@ async def apply_agent_run(worker_id: str) -> str:
     
     if success:
         WorktreeManager.cleanup_worktree(orig_workspace, wt_uuid)
+        db.update_worker(worker_id, worktree_uuid=None, original_workspace=None)
         return f"Successfully merged worktree {wt_uuid} into main branch and cleaned it up."
     else:
         return f"Failed to merge worktree {wt_uuid}. There may be conflicts."
@@ -211,6 +216,7 @@ async def cleanup_agent_run(worker_id: str) -> str:
     if wt_uuid:
         orig_workspace = worker.get("original_workspace")
         WorktreeManager.cleanup_worktree(orig_workspace, wt_uuid)
+        db.update_worker(worker_id, worktree_uuid=None, original_workspace=None)
         return f"Worker {worker_id} cancelled and worktree {wt_uuid} cleaned up."
         
     return f"Worker {worker_id} cancelled."
