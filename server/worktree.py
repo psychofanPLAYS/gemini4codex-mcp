@@ -10,12 +10,18 @@ class WorktreeManager:
     """Manages Git worktrees for isolated agent execution."""
 
     @staticmethod
+    def _get_env(repo_path: str):
+        env = os.environ.copy()
+        env["HOME"] = repo_path
+        return env
+
+    @staticmethod
     def is_git_repo(path: str) -> bool:
         try:
             subprocess.run(
                 ["git", "rev-parse", "--is-inside-work-tree"],
                 cwd=path,
-                env={"HOME": path, "PATH": os.environ.get("PATH", "")},
+                env=WorktreeManager._get_env(path),
                 check=True,
                 capture_output=True,
                 text=True
@@ -51,7 +57,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "worktree", "add", "-b", wt_branch, wt_rel_path, "HEAD"],
                 cwd=repo_path,
-                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
+                env=WorktreeManager._get_env(repo_path),
                 check=True,
                 capture_output=True,
                 text=True
@@ -67,13 +73,10 @@ class WorktreeManager:
         wt_branch = f"wt-{wt_uuid}"
         try:
             # Get changes committed in the worktree vs the branch point
-            # Assuming branch point is what was HEAD when branched
-            # Or just use the branch directly against whatever we want, but 'git diff HEAD..wt-branch'
-            # To be safe, we just diff against HEAD.
             result = subprocess.run(
                 ["git", "diff", f"HEAD..{wt_branch}"],
                 cwd=repo_path,
-                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
+                env=WorktreeManager._get_env(repo_path),
                 check=True,
                 capture_output=True,
                 text=True
@@ -92,7 +95,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "merge", "--squash", wt_branch],
                 cwd=repo_path,
-                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
+                env=WorktreeManager._get_env(repo_path),
                 check=True,
                 capture_output=True,
                 text=True
@@ -101,7 +104,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "-c", "user.name=Codex Community", "-c", "user.email=community@codex.ai", "commit", "-m", f"feat: apply delegated task changes ({wt_uuid})"],
                 cwd=repo_path,
-                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
+                env=WorktreeManager._get_env(repo_path),
                 check=True,
                 capture_output=True,
                 text=True
@@ -109,9 +112,8 @@ class WorktreeManager:
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to apply run: {e.stderr}")
-            # Abort merge if it failed
-            subprocess.run(["git", "reset", "--hard", "HEAD"], cwd=repo_path, env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")}, capture_output=True)
-            subprocess.run(["git", "clean", "-fd"], cwd=repo_path, env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")}, capture_output=True)
+            # Abort merge if it failed to avoid data loss
+            subprocess.run(["git", "merge", "--abort"], cwd=repo_path, env=WorktreeManager._get_env(repo_path), capture_output=True)
             return False
 
     @staticmethod
@@ -126,7 +128,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "worktree", "remove", "--force", wt_abs_path],
                 cwd=repo_path,
-                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
+                env=WorktreeManager._get_env(repo_path),
                 capture_output=True,
                 text=True
             )
@@ -134,7 +136,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "branch", "-D", wt_branch],
                 cwd=repo_path,
-                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
+                env=WorktreeManager._get_env(repo_path),
                 capture_output=True,
                 text=True
             )
@@ -142,7 +144,7 @@ class WorktreeManager:
             subprocess.run(
                 ["git", "worktree", "prune"],
                 cwd=repo_path,
-                env={"HOME": repo_path, "PATH": os.environ.get("PATH", "")},
+                env=WorktreeManager._get_env(repo_path),
                 capture_output=True,
                 text=True
             )

@@ -147,20 +147,14 @@ class LedgerDB:
             return [dict(row) for row in cur.fetchall()]
 
     def reconcile_stale_runs(self):
-        """Find runs marked as RUNNING but whose PIDs are no longer active, and mark them FAILED."""
+        """Find runs marked as RUNNING from previous crashes and mark them FAILED."""
         with self._transaction() as conn:
-            cur = conn.execute("SELECT run_id, worker_id, pid FROM runs WHERE status = 'RUNNING'")
+            now = datetime.utcnow().isoformat()
+            
+            # Find all running runs
+            cur = conn.execute("SELECT run_id, worker_id FROM runs WHERE status = 'RUNNING'")
             runs = cur.fetchall()
             
             for row in runs:
-                pid = row['pid']
-                if pid:
-                    # Check if process exists
-                    try:
-                        os.kill(pid, 0)
-                        # Process exists
-                    except OSError:
-                        # Process does not exist
-                        now = datetime.utcnow().isoformat()
-                        conn.execute("UPDATE runs SET status = 'FAILED', error = 'Process terminated unexpectedly', end_time = ? WHERE run_id = ?", (now, row['run_id']))
-                        conn.execute("UPDATE workers SET state = 'FAILED', last_seen_at = ? WHERE worker_id = ?", (now, row['worker_id']))
+                conn.execute("UPDATE runs SET status = 'FAILED', error = 'Process terminated unexpectedly', end_time = ? WHERE run_id = ?", (now, row['run_id']))
+                conn.execute("UPDATE workers SET state = 'FAILED', last_seen_at = ? WHERE worker_id = ?", (now, row['worker_id']))

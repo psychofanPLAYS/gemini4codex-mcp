@@ -1,4 +1,5 @@
 import os
+import re
 from google.antigravity import types
 from google.antigravity.hooks import hooks
 
@@ -37,8 +38,18 @@ def get_enforce_boundaries_hook(profile: str, workspace: str):
         # 3. VCS Protection
         if tool_name == "run_command":
             cmd = tool_args.get("CommandLine") or tool_args.get("command", "")
-            blocked = ["git commit", "git push", "git merge", "git reset", "git clean", "rm -rf"]
-            if any(b in cmd for b in blocked):
+            
+            blocked_patterns = [
+                r"\bgit\s+commit\b",
+                r"\bgit\s+push\b",
+                r"\bgit\s+merge\b",
+                r"\bgit\s+reset\b",
+                r"\bgit\s+clean\b",
+                r"\brm\s+.*?-[rR].*?f\b",
+                r"\brm\s+.*?-[fF].*?r\b",
+                r"\brm\s+-rf\b"
+            ]
+            if any(re.search(p, cmd) for p in blocked_patterns):
                 return types.HookResult(
                     allow=False,
                     reason=f"SECURITY ENFORCEMENT: Destructive command '{cmd}' is blocked for subordinate workers."

@@ -1,8 +1,0 @@
-{
-  "name": "codex-supervised-worker",
-  "version": "1.0.0",
-  "description": "Companion plugin to restrict Gemini workers supervised by Codex.",
-  "type": "plugin",
-  "hooks": "hooks.json",
-  "skills": "skills"
-}

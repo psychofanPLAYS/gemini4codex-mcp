@@ -1,5 +1,0 @@
-{
-  "pre_tool_use": [
-    "hooks/enforce_boundaries.py"
-  ]
-}
