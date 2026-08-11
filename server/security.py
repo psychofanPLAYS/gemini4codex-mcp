@@ -67,10 +67,9 @@ def get_enforce_boundaries_hook(profile: str, workspace: str):
                         reason=f"SECURITY ENFORCEMENT: Destructive git operation in '{cmd}' is blocked for subordinate workers."
                     )
                     
-            # Check for recursive force removal
-            if "rm" in tokens or "rmdir" in tokens:
-                flags = "".join([t for t in tokens if t.startswith("-")]).replace("-", "")
-                if "r" in flags and "f" in flags:
+            # Check for recursive force removal (including full paths and subshells)
+            if re.search(r'(?:\b|/)(rm|rmdir)\b', cmd_lower):
+                if re.search(r'-[a-z]*r', cmd_lower) and re.search(r'-[a-z]*f', cmd_lower):
                     return types.HookResult(
                         allow=False,
                         reason=f"SECURITY ENFORCEMENT: Destructive command '{cmd}' is blocked for subordinate workers."
