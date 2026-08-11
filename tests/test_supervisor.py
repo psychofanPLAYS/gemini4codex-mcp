@@ -17,9 +17,12 @@ def test_run_persists_and_completes_with_current_post_tool_hook(tmp_path, monkey
                 blockers=[],
             )
 
+    captured = {}
+
     class FakeAgent:
         def __init__(self, config):
             self.config = config
+            captured["config"] = config
 
         async def __aenter__(self):
             return self
@@ -47,3 +50,4 @@ def test_run_persists_and_completes_with_current_post_tool_hook(tmp_path, monkey
 
     assert db.get_run("run-1")["status"] == "COMPLETED"
     assert db.get_worker("worker-1")["state"] == "IDLE"
+    assert captured["config"].api_key == "antigravity-local"

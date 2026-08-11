@@ -16,6 +16,11 @@ from .security import get_enforce_boundaries_hook
 
 logger = logging.getLogger(__name__)
 
+# The local Antigravity harness rejects an empty transport key before it can
+# load the Desktop app's OAuth credentials. This sentinel is not a credential;
+# Antigravity resolves the actual account from app_data_dir.
+ANTIGRAVITY_LOCAL_TRANSPORT_KEY = "antigravity-local"
+
 # Monkey-patch SDK to bypass the artificial api_key requirement.
 # This allows the MCP server to piggyback off the local Antigravity Desktop app's Pro Subscription credentials.
 google.antigravity.models.GeminiAPIEndpoint.validate_endpoint = lambda self: None
@@ -98,7 +103,7 @@ class GeminiSupervisor:
 
         config = LocalAgentConfig(
             model=model or "gemini-3.6-flash",
-            api_key=None,  # Explicitly set to None to inherit local Antigravity Desktop app auth
+            api_key=ANTIGRAVITY_LOCAL_TRANSPORT_KEY,
             instructions=global_rules if global_rules else None,
             capabilities=types.CapabilitiesConfig(
                 enable_subagents=is_pro
