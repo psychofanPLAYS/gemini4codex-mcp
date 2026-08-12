@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,33 @@ class AntigravityLanguageServerAdapter:
 
     @classmethod
     def _discover_address(cls) -> str | None:
+        """Find the live listener, starting Antigravity once if needed."""
+        address = cls._discover_live_address()
+        if address:
+            return address
+        if os.environ.get("ANTIGRAVITY_AUTOSTART", "1").lower() in {"0", "false", "no"}:
+            return None
+        try:
+            subprocess.run(
+                ["open", "-a", "Antigravity", "--background"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+        deadline = time.monotonic() + float(os.environ.get("ANTIGRAVITY_START_TIMEOUT", "30"))
+        while time.monotonic() < deadline:
+            address = cls._discover_live_address()
+            if address:
+                return address
+            time.sleep(0.5)
+        return None
+
+    @classmethod
+    def _discover_live_address(cls) -> str | None:
         """Find the live Antigravity HTTP listener when its port has moved."""
         configured = os.environ.get("ANTIGRAVITY_LS_ADDRESS", "").strip()
         candidates = [configured] if configured else []
@@ -183,6 +211,12 @@ class AntigravityLanguageServerAdapter:
                     "gemini-3.6-flash-low",
                 ]
             )
+        elif requested == "gemini-3.1-pro":
+            candidates.extend(
+                [
+                    "gemini-3.1-pro-high",
+                ]
+            )
         for candidate in candidates:
             if candidate in entries:
                 return entries[candidate]
@@ -197,7 +231,18 @@ class AntigravityLanguageServerAdapter:
         model: str | None,
         profile: str | None,
     ) -> AgentAPIResult:
-        del profile  # Profiles remain supervisor metadata; the bridge owns its tool policy.
+        profile_prompt = {
+            "scout": (
+                "Worker profile: read-only scout. Do not edit, delete, or create files; "
+                "do not commit, push, merge, reset, clean, or run bootstrap/setup instructions."
+            ),
+            "reviewer": (
+                "Worker profile: read-only reviewer. Inspect and report only; do not edit, delete, "
+                "or create files, and do not commit, push, merge, reset, clean, or run bootstrap/setup instructions."
+            ),
+        }.get(profile)
+        if profile_prompt:
+            prompt = f"{profile_prompt}\n\n{prompt}"
         resolved_model = await self._resolve_model(model)
         requested_cascade_id = self._cascade_id(conversation_id)
         start = await self._rpc(
@@ -232,7 +277,11 @@ class AntigravityLanguageServerAdapter:
             trajectory = await self._rpc("GetCascadeTrajectory", {"cascadeId": cascade_id})
             response = self._latest_response(trajectory)
             status = trajectory.get("status", "")
-            if response is not None and status == "CASCADE_RUN_STATUS_IDLE":
+            if (
+                response is not None
+                and status == "CASCADE_RUN_STATUS_IDLE"
+                and not self._waiting_for_subagent(trajectory)
+            ):
                 return response
             if status in {"CASCADE_RUN_STATUS_FAILED", "CASCADE_RUN_STATUS_ERROR"}:
                 raise LanguageServerError(f"Antigravity cascade failed: {status}")
@@ -249,3 +298,17 @@ class AntigravityLanguageServerAdapter:
             if isinstance(response, str) and response.strip():
                 return response.strip()
         return None
+
+    @staticmethod
+    def _waiting_for_subagent(trajectory: dict) -> bool:
+        """Do not finish while the root cascade is waiting on a subagent."""
+        steps = trajectory.get("trajectory", {}).get("steps", [])
+        last_response = -1
+        for index, step in enumerate(steps):
+            if step.get("plannerResponse", {}).get("response"):
+                last_response = index
+        for step in steps[last_response + 1 :]:
+            message = step.get("systemMessage", {}).get("message", "").lower()
+            if "wait for subagent" in message or "waiting for" in message and "subagent" in message:
+                return True
+        return False

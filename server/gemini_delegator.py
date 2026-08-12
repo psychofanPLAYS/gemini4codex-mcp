@@ -96,11 +96,22 @@ async def delegate_to_agent(
     # 1. Create Worktree if it's a git repo
     wt_uuid = None
     target_workspace = workspace_path
+    worker = db.get_worker(worker_id)
     
     if WorktreeManager.is_git_repo(workspace_path):
-        worker = db.get_worker(worker_id)
         if worker and worker.get("worktree_uuid"):
-            WorktreeManager.cleanup_worktree(worker.get("original_workspace"), worker.get("worktree_uuid"))
+            if worker.get("state") in {"RUNNING", "INITIALIZING"}:
+                return json.dumps({
+                    "status": "FAILED",
+                    "message": f"Worker {worker_id} is already active; use continue_agent_run or cleanup_agent_run.",
+                })
+            if not WorktreeManager.cleanup_worktree(
+                worker.get("original_workspace"), worker.get("worktree_uuid")
+            ):
+                return json.dumps({
+                    "status": "FAILED",
+                    "message": f"Worker {worker_id} has a dirty worktree; inspect or explicitly clean it before reuse.",
+                })
             
         res = WorktreeManager.create_worktree(workspace_path)
         if res:
@@ -142,7 +153,7 @@ async def continue_agent_run(
     if not worker:
         return f"Error: Worker {worker_id} not found."
         
-    if worker.get("state") == "RUNNING":
+    if worker.get("state") in {"RUNNING", "INITIALIZING"}:
         return f"Error: Worker {worker_id} is currently busy."
         
     if not worker.get("worktree_uuid"):
@@ -190,10 +201,13 @@ def get_agent_run_report(worker_id: str) -> str:
 
 @mcp.tool()
 async def apply_agent_run(worker_id: str) -> str:
-    """Merge the changes from the agent's worktree back into the main branch."""
+    """Stage the changes from the agent's worktree into the target branch."""
     worker = db.get_worker(worker_id)
     if not worker:
         return f"Error: Worker {worker_id} not found."
+
+    if worker.get("state") in {"RUNNING", "INITIALIZING"}:
+        return f"Worker {worker_id} is still running; wait for completion before applying it."
         
     wt_uuid = worker.get("worktree_uuid")
     if not wt_uuid:
@@ -203,11 +217,13 @@ async def apply_agent_run(worker_id: str) -> str:
     success = WorktreeManager.apply_run(orig_workspace, wt_uuid)
     
     if success:
-        WorktreeManager.cleanup_worktree(orig_workspace, wt_uuid)
-        db.update_worker(worker_id, worktree_uuid=None, original_workspace=None)
-        return f"Successfully merged worktree {wt_uuid} into main branch and cleaned it up."
+        cleaned = WorktreeManager.cleanup_worktree(orig_workspace, wt_uuid, force=True)
+        if cleaned:
+            db.update_worker(worker_id, worktree_uuid=None, original_workspace=None)
+            return f"Successfully staged worktree {wt_uuid} into main and cleaned it up."
+        return f"Successfully staged worktree {wt_uuid}; cleanup failed, so it remains available for recovery."
     else:
-        return f"Failed to merge worktree {wt_uuid}. There may be conflicts."
+        return f"Failed to stage worktree {wt_uuid}. There may be conflicts."
 
 @mcp.tool()
 async def cleanup_agent_run(worker_id: str) -> str:
@@ -222,9 +238,11 @@ async def cleanup_agent_run(worker_id: str) -> str:
     wt_uuid = worker.get("worktree_uuid")
     if wt_uuid:
         orig_workspace = worker.get("original_workspace")
-        WorktreeManager.cleanup_worktree(orig_workspace, wt_uuid)
-        db.update_worker(worker_id, worktree_uuid=None, original_workspace=None)
-        return f"Worker {worker_id} cancelled and worktree {wt_uuid} cleaned up."
+        cleaned = WorktreeManager.cleanup_worktree(orig_workspace, wt_uuid, force=True)
+        if cleaned:
+            db.update_worker(worker_id, worktree_uuid=None, original_workspace=None)
+            return f"Worker {worker_id} cancelled and worktree {wt_uuid} cleaned up."
+        return f"Worker {worker_id} cancelled, but worktree {wt_uuid} could not be cleaned up."
         
     return f"Worker {worker_id} cancelled."
 
